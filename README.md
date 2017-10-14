@@ -1,6 +1,8 @@
 Foo Protocol Proxy
 ==================
 
+[![Join the chat at https://gitter.im/ahmedkamals/foo-protocol-proxy](https://badges.gitter.im/ahmedkamals/foo-protocol-proxy.svg)](https://gitter.im/ahmedkamals/foo-protocol-proxy?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 [![GoDoc](https://godoc.org/github.com/ahmedkamals/foo-protocol-proxy?status.svg)](https://godoc.org/github.com/ahmedkamals/foo-protocol-proxy "API Documentation")
 
 A Golang implementation for proxy receiver over Foo protocol.
