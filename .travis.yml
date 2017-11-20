@@ -16,7 +16,7 @@ matrix:
   include:
     - go: 1.8
       env:
-        - VERIFY=true
+        - VALIDATE=true
         - COVERAGE=true
         - TESTS=false
   allow_failures:
@@ -49,7 +49,7 @@ jobs:
 
 script:
   - if [ "$TESTS" == true ]; then make test ; else echo 'skipping tests.'; fi
-  - if [ "$VERIFY" == true ]; then make verify ; else echo 'skipping verfication.'; fi
+  - if [ "$VALIDATE" == true ]; then make validate ; else echo 'skipping verfication.'; fi
   - if [ "$COVERAGE" == true ]; then make cover; travis_retry goveralls -coverprofile=coverage/profile.out -service=travis-ci -repotoken $COVERALLS_TOKEN || true ; else echo 'skipping coverage.'; fi
 
 after_success:
