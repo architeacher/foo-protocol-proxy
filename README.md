@@ -2,8 +2,8 @@ Foo Protocol Proxy
 ==================
 
 [![GitHub tag](https://img.shields.io/github/tag/ahmedkamals/foo-protocol-proxy.svg?style=flat)](https://github.com/ahmedkamals/foo-protocol-proxy/releases  "Version Tag")
-[![Coverage Status](https://coveralls.io/repos/github/ahmedkamals/foo-protocol-proxy/badge.svg?branch=master)](https://coveralls.io/github/ahmedkamals/foo-protocol-proxy?branch=master  "Code Coverage")
 [![Build Status](https://travis-ci.org/ahmedkamals/foo-protocol-proxy.svg)](https://travis-ci.org/ahmedkamals/foo-protocol-proxy  "Build Status")
+[![Coverage Status](https://coveralls.io/repos/github/ahmedkamals/foo-protocol-proxy/badge.svg?branch=master)](https://coveralls.io/github/ahmedkamals/foo-protocol-proxy?branch=master  "Code Coverage")
 [![Go Report Card](https://goreportcard.com/badge/github.com/ahmedkamals/foo-protocol-proxy)](https://goreportcard.com/report/github.com/ahmedkamals/foo-protocol-proxy  "Go Report Card")
 [![GoDoc](https://godoc.org/github.com/ahmedkamals/foo-protocol-proxy?status.svg)](https://godoc.org/github.com/ahmedkamals/foo-protocol-proxy "API Documentation")
 [![Docker Pulls](https://img.shields.io/docker/pulls/ahmedkamal/foo-protocol-proxy.svg?maxAge=604800)](https://hub.docker.com/r/ahmedkamal/foo-protocol-proxy/ "Docker Pulls")
@@ -192,7 +192,7 @@ You can use the following steps as a testing procedure
 
 ## Tests
     
-Not all items covered, just made one example.
+Not all items covered, just made few examples.
     
 ```bash
 $ make test
