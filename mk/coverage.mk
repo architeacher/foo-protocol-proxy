@@ -10,7 +10,7 @@ coverage-html: $(COVERAGE_HTML) ## to export coverage results to html format"$(C
 # Send the results to coveralls
 coverage-send: $(COVERAGE_PROFILE)
 	@$(if $(GOVERALLS), , $(error Please install goveralls: go get github.com/mattn/goveralls))
-	@$(GOVERALLS) -service travis-ci -coverprofile="$(COVERAGE_PROFILE)"
+	@travis_retry $(GOVERALLS) -service travis-ci -coverprofile="$(COVERAGE_PROFILE)" -repotoken $COVERALLS_TOKEN
 
 coverage-serve: $(COVERAGE_HTML) ## to serve coverage results over http - useful only if building remote/headless
 	@cd "$(COVERAGE_PATH)" && python -m SimpleHTTPServer 8000
