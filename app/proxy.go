@@ -1,128 +1,200 @@
 package app
 
 import (
-	"foo-protocol-proxy/config"
-	"log"
+	"github.com/ahmedkamals/foo-protocol-proxy/analysis"
+	"github.com/ahmedkamals/foo-protocol-proxy/communication"
+	"github.com/ahmedkamals/foo-protocol-proxy/config"
+	"github.com/ahmedkamals/foo-protocol-proxy/persistence"
+	"github.com/kpango/glg"
+	"io"
 	"net"
 	"os"
 	"os/signal"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
 
 type (
+	// Proxy orchestrates the interactions between the server and client,
+	// and collection of analysis data.
 	Proxy struct {
-		config    config.Configuration
-		dataChan  chan *DataBus
-		status    chan os.Signal
-		stats     *Stats
-		ticker    *time.Ticker
-		timeTable *TimeTable
+		config         config.Configuration
+		clientConnChan chan net.Conn
+		analyzer       *analysis.Analyzer
+		signalChan     chan os.Signal
+		errorChan      chan error
+		milliTicker    *time.Ticker
+		oneSecTicker   *time.Ticker
+		saver          persistence.Saver
+		logger         *glg.Glg
 	}
 )
 
-func NewProxy(config config.Configuration) *Proxy {
+// NewProxy allocates and returns a new Proxy to handle connections forwarding/reversing.
+func NewProxy(
+	config config.Configuration,
+	analyzer *analysis.Analyzer,
+	saver persistence.Saver,
+	logger *glg.Glg,
+	errorChan chan error,
+) *Proxy {
 	return &Proxy{
-		config:   config,
-		dataChan: make(chan *DataBus),
-		status:   make(chan os.Signal, 1),
-		stats:    new(Stats),
-		ticker:   time.NewTicker(time.Millisecond),
-		timeTable: &TimeTable{
-			RequestsInOneSec:  [1000]uint64{},
-			ResponseInOneSec:  [1000]uint64{},
-			RequestsInTenSec:  [10000]uint64{},
-			ResponsesInTenSec: [10000]uint64{},
-		},
+		config:         config,
+		clientConnChan: make(chan net.Conn),
+		analyzer:       analyzer,
+		signalChan:     make(chan os.Signal, 1),
+		errorChan:      errorChan,
+		milliTicker:    time.NewTicker(time.Millisecond),
+		oneSecTicker:   time.NewTicker(time.Second),
+		saver:          saver,
+		logger:         logger,
 	}
 }
 
-func (p *Proxy) Start() {
-	config := p.config
-	listener, err := net.Listen("tcp", config.Listening)
+// Start initiates the proxy operations.
+func (p *Proxy) Start() error {
+	lis, err := net.Listen("tcp", p.config.Listening)
 
 	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
+		return err
 	}
 
-	log.Printf("Listening on %s, PID=%d", config.Listening, os.Getpid())
+	p.recoverData()
 
-	go p.handleConnections()
+	listener := communication.NewListener(lis, p.errorChan)
+
+	p.logger.Infof("Forwarding from %s to %s", listener.Addr(), p.config.Forwarding)
+
+	go listener.AwaitForConnections(p.clientConnChan)
+	go p.handleClientConnections(p.clientConnChan)
 	go p.heartbeat()
-
-	signal.Notify(p.status, syscall.SIGUSR2)
-
 	go p.reportStatus()
+	go p.analyzer.MonitorData()
+	go p.monitorErrors()
 
-	for {
-		clientConn, err := listener.Accept()
+	signal.Notify(p.signalChan, syscall.SIGUSR2)
+
+	return nil
+}
+
+func (p *Proxy) reportError(err error) {
+	p.errorChan <- err
+}
+
+func (p *Proxy) recoverData() {
+	data, err := p.saver.Read()
+
+	if err != nil {
+		p.reportError(err)
+		return
+	}
+
+	recovery := persistence.NewEmptyRecovery()
+	err = recovery.Unmarshal(data)
+
+	if err != nil {
+		p.reportError(err)
+		return
+	}
+
+	mutex := sync.Mutex{}
+	mutex.Lock()
+	p.analyzer.RestoreTenSecCounter(recovery)
+	mutex.Unlock()
+}
+
+func (p *Proxy) handleClientConnections(clientConnChan chan net.Conn) {
+	for clientConn := range clientConnChan {
+		serverConn, err := p.forward()
 
 		if err != nil {
-			log.Println(err)
-			continue
+			p.reportError(err)
+			os.Exit(1)
 		}
 
-		dataBus := NewDataBus(p.stats, p.timeTable)
-		NewClient(clientConn, dataBus).Start()
-
-		p.dataChan <- dataBus
+		bridgeConnection := communication.NewBridgeConnection(
+			clientConn,
+			serverConn,
+			p.analyzer.GetDataSource(),
+			p.errorChan,
+		)
+		bridgeConnection.Bind()
 	}
 }
 
-func (p *Proxy) handleConnections() {
-	for dataBus := range p.dataChan {
-		serverConn := p.Forward()
-		NewServer(serverConn, dataBus).Start()
-	}
-}
-
-func (p *Proxy) Forward() net.Conn {
+func (p *Proxy) forward() (net.Conn, error) {
 	serverConn, err := net.Dial("tcp", p.config.Forwarding)
 
 	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
+		return nil, err
 	}
 
-	return serverConn
+	return serverConn, nil
 }
 
 func (p *Proxy) heartbeat() {
 	for {
 		select {
-		case <-p.ticker.C:
-			index := atomic.AddUint32(&p.timeTable.Index, 1) - 1
-			// Index for one second time table.
-			indexOneSec := index % 1000
-			// Index for ten second time table.
-			indexTenSec := index % 10000
+		case <-p.milliTicker.C:
+			p.analyzer.UpdateStats(time.Millisecond)
 
-			requestsCount := atomic.LoadUint64(&p.timeTable.RequestsCount)
-			responsesCount := atomic.LoadUint64(&p.timeTable.ResponsesCount)
-
-			mutex := sync.Mutex{}
-			mutex.Lock()
-
-			p.timeTable.RequestsInOneSec[indexOneSec] = requestsCount
-			p.timeTable.ResponseInOneSec[indexOneSec] = responsesCount
-			p.timeTable.RequestsInTenSec[indexTenSec] = requestsCount
-			p.timeTable.ResponsesInTenSec[indexTenSec] = responsesCount
-
-			p.timeTable.RequestsCount = 0
-			p.timeTable.ResponsesCount = 0
-
-			mutex.Unlock()
+		case <-p.oneSecTicker.C:
+			p.analyzer.UpdateStats(time.Second)
+			p.persistData()
 		}
 	}
 }
 
+func (p *Proxy) persistData() {
+	timeTable := p.analyzer.GetTimeTable()
+	r := persistence.NewRecovery(
+		timeTable.IndexTenSec,
+		uint64(time.Now().Unix()),
+		timeTable.RequestsInTenSec,
+		timeTable.ResponsesInTenSec,
+	)
+	data, err := r.Marshal()
+
+	if err != nil {
+		p.reportError(err)
+	}
+
+	p.saver.Save(data)
+}
+
 func (p *Proxy) reportStatus() {
 	for {
-		<-p.status
-		p.stats.CalculateAverages(p.timeTable)
-		p.stats.Flush()
+		select {
+		case <-p.signalChan:
+			report, err := p.analyzer.Report()
+
+			if err != nil {
+				p.reportError(err)
+				return
+			}
+
+			println(report)
+		default:
+			continue
+		}
 	}
+}
+
+func (p *Proxy) monitorErrors() {
+	for err := range p.errorChan {
+		if err != nil && err != io.EOF {
+			p.logger.Error(err)
+		}
+	}
+}
+
+// Close closes the proxy, and its related channels.
+func (p *Proxy) Close() {
+	close(p.clientConnChan)
+	close(p.signalChan)
+	close(p.errorChan)
+	p.saver.Close()
+	p.milliTicker.Stop()
+	p.oneSecTicker.Stop()
 }

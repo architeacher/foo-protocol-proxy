@@ -1,3 +1,10 @@
+.git/
+*.md
+LICENSE
+NOTICE
+MAINTAINERS
+.mailmap
+
 # Binaries for programs and plugins
 *.exe
 *.dll
@@ -14,13 +21,11 @@
 .glide/
 
 .idea/
-.bin/
 .tests/
+.bin/
 .data/
-.docker*
-!.dockerignore
-pkg/version/version.go
 .env
+.docker*
 *.iml
 *.log
-.go
+.github/

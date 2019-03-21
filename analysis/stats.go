@@ -1,14 +1,12 @@
-package app
+package analysis
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 )
 
 type (
+	// Stats type acts as an interface to the data that will be exported later.
 	Stats struct {
 		// msg_total — total number of messages (integer)
 		TotalMessages uint64 `json:"msg_total"`
@@ -29,22 +27,23 @@ type (
 	}
 )
 
-func (s *Stats) UpdateTotalCounters(msgType MessageType) {
+// UpdateTotalCounters updates total counts.
+func (s *Stats) UpdateTotalCounters(msgType message) {
 	switch msgType {
-	case TYPE_REQ:
+	case TypeReq:
 		atomic.AddUint64(&s.TotalRequests, 1)
 
-	case TYPE_ACK:
+	case TypeAck:
 		atomic.AddUint64(&s.TotalACK, 1)
 
-	case TYPE_NAK:
+	case TypeNak:
 		atomic.AddUint64(&s.TotalNAK, 1)
 	}
 
 	atomic.AddUint64(&s.TotalMessages, 1)
 }
 
-// Calculates average req/response in 1s/10s.
+// CalculateAverages calculates average req/response in 1s/10s.
 func (s *Stats) CalculateAverages(timeTable *TimeTable) {
 	mutex := sync.Mutex{}
 	mutex.Lock()
@@ -58,7 +57,7 @@ func (s *Stats) CalculateAverages(timeTable *TimeTable) {
 		requestsSumOneSec += val
 	}
 
-	for _, val := range timeTable.ResponseInOneSec {
+	for _, val := range timeTable.ResponsesInOneSec {
 		responsesSumOneSec += val
 	}
 
@@ -76,14 +75,4 @@ func (s *Stats) CalculateAverages(timeTable *TimeTable) {
 	s.ResponseRatePerTenSecond = float64(responsesSumTenSec) / 10000
 
 	mutex.Unlock()
-}
-
-func (s *Stats) Flush() {
-	result, err := json.Marshal(s)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(string(result))
 }
